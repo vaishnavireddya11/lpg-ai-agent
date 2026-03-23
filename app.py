@@ -30,7 +30,7 @@ if st.button("Search Stations"):
         st.warning("Please enter a search query!")
     else:
         # YOUR ACTUAL n8n CLOUD URL
-        WEBHOOK_URL = "https://vaishnavireddya11.app.n8n.cloud/webhook-test/lpg-finder" 
+        WEBHOOK_URL = "https://vaishnavireddya11.app.n8n.cloud/webhook/lpg-finder" 
         
         payload = {
             "latitude": user_lat,
