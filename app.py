@@ -43,14 +43,19 @@ if st.button("Search Stations"):
 
         with st.spinner("Agent is analyzing gas stations and market data..."):
             try:
+                # 1. SEND DATA TO n8n
                 response = requests.post(WEBHOOK_URL, json=payload)
                 
                 if response.status_code == 200:
                     result = response.json()
                     
-                    # 1. ANALYTICS DATA PROCESSING
-                    # We get the list of stations from the 'results' key sent by n8n
-                    raw_data = result[0].get('results') if isinstance(result, list) else result.get('results')
+                    # Handle n8n returning a list or a dict
+                    if isinstance(result, list):
+                        result = result[0]
+
+                    # --- 2. ANALYTICS & VISUALIZATION ---
+                    # This looks for the 'results' list we added in the n8n Code node
+                    raw_data = result.get('results')
                     
                     if raw_data:
                         df = pd.DataFrame(raw_data)
@@ -61,16 +66,20 @@ if st.button("Search Stations"):
                         col1, col2 = st.columns(2)
                         with col1:
                             st.write("**Brand Distribution**")
+                            # Simple Pie Chart using Streamlit's built-in tool
                             brand_counts = df['brand'].value_counts()
-                            st.pyplot(brand_counts.plot.pie(autopct='%1.1f%%').figure) # Simple Pie Chart
+                            st.write(brand_counts) # Shows a small table
+                            st.divider()
+                            # Optional: Use a bar chart if Pie feels too complex to code quickly
+                            st.bar_chart(brand_counts)
 
                         with col2:
-                            st.write("**Price Summary**")
-                            avg_price = df['price'].astype(float).mean()
+                            st.write("**Quick Insights**")
+                            avg_price = pd.to_numeric(df['price']).mean()
                             st.metric("Avg Price", f"₹{avg_price:.2f}")
                             st.metric("Total Options", len(df))
 
-                        # 2. DOWNLOAD DETAILED DATA
+                        # --- 3. DATA DOWNLOAD ---
                         csv = df.to_csv(index=False).encode('utf-8')
                         st.download_button(
                             label="📥 Download Detailed Analysis (CSV)",
@@ -79,20 +88,16 @@ if st.button("Search Stations"):
                             mime='text/csv',
                         )
 
-                    # 3. AI AGENT ADVICE
+                    # --- 4. AI AGENT ADVICE ---
                     st.markdown("---")
                     st.markdown("### 🤖 Agent Advice")
-                    # Safely get the AI text
-                    if isinstance(result, list):
-                        answer = result[0].get('output') or result[0].get('text')
-                    else:
-                        answer = result.get('output') or result.get('text')
-                    
+                    answer = result.get('output') or result.get('text')
                     st.info(answer if answer else "Analysis complete, but no text response generated.")
 
                 else:
                     st.error(f"n8n returned an error: {response.status_code}")
 
             except Exception as e:
-                # THIS IS THE BLOCK THAT WAS MISSING
-                st.error(f"An error occurred: {e}")
+                # THIS IS THE BLOCK THAT PREVENTS THE SYNTAX ERROR
+                st.error(f"An error occurred during processing: {e}")
+                st.info("Check if your n8n workflow is 'Executing' and receiving data.")
