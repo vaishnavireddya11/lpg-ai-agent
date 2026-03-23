@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import pandas as pd  # Add this for data manipulation
 from streamlit_js_eval import get_geolocation
 
 # --- UI CONFIG ---
@@ -25,12 +26,13 @@ query = st.text_input("What are you looking for?", placeholder="e.g., Bharat Gas
 budget = st.number_input("What is your max budget (INR)?", min_value=500, max_value=2000, value=1000)
 
 # --- STEP 3: WEBHOOK COMMUNICATION ---
+# --- STEP 3: WEBHOOK COMMUNICATION & ANALYTICS ---
 if st.button("Search Stations"):
     if not query:
         st.warning("Please enter a search query!")
     else:
-        # YOUR ACTUAL n8n CLOUD URL
-        WEBHOOK_URL = "https://vaishnavireddya11.app.n8n.cloud/webhook/lpg-finder" 
+        # YOUR n8n PRODUCTION URL (Update this when deploying!)
+        WEBHOOK_URL = "https://vaishnavireddya11.app.n8n.cloud/webhook-test/lpg-finder" 
         
         payload = {
             "latitude": user_lat,
@@ -39,28 +41,58 @@ if st.button("Search Stations"):
             "budget": budget
         }
 
-        with st.spinner("Agent is analyzing gas stations..."):
+        with st.spinner("Agent is analyzing gas stations and market data..."):
             try:
-                # 1. Send data to n8n
                 response = requests.post(WEBHOOK_URL, json=payload)
                 
                 if response.status_code == 200:
                     result = response.json()
-                    st.markdown("### 🤖 Agent Response:")
                     
-                    # 2. Logic to find the AI's text in the n8n response
-                    if isinstance(result, list) and len(result) > 0:
-                        data = result[0]
-                        # AI Agent usually sends 'output'. If not, we check 'text'
-                        answer = data.get('output') or data.get('text') or str(data)
-                        st.info(answer)
-                    elif isinstance(result, dict):
-                        answer = result.get('output') or result.get('text') or str(result)
-                        st.info(answer)
+                    # 1. ANALYTICS DATA PROCESSING
+                    # We get the list of stations from the 'results' key sent by n8n
+                    raw_data = result[0].get('results') if isinstance(result, list) else result.get('results')
+                    
+                    if raw_data:
+                        df = pd.DataFrame(raw_data)
+                        
+                        st.markdown("---")
+                        st.markdown("### 📊 Market Analytics")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write("**Brand Distribution**")
+                            brand_counts = df['brand'].value_counts()
+                            st.pyplot(brand_counts.plot.pie(autopct='%1.1f%%').figure) # Simple Pie Chart
+
+                        with col2:
+                            st.write("**Price Summary**")
+                            avg_price = df['price'].astype(float).mean()
+                            st.metric("Avg Price", f"₹{avg_price:.2f}")
+                            st.metric("Total Options", len(df))
+
+                        # 2. DOWNLOAD DETAILED DATA
+                        csv = df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download Detailed Analysis (CSV)",
+                            data=csv,
+                            file_name='lpg_analysis.csv',
+                            mime='text/csv',
+                        )
+
+                    # 3. AI AGENT ADVICE
+                    st.markdown("---")
+                    st.markdown("### 🤖 Agent Advice")
+                    # Safely get the AI text
+                    if isinstance(result, list):
+                        answer = result[0].get('output') or result[0].get('text')
                     else:
-                        st.warning("The agent reached the end but didn't return text.")
+                        answer = result.get('output') or result.get('text')
+                    
+                    st.info(answer if answer else "Analysis complete, but no text response generated.")
+
                 else:
-                    st.error(f"n8n error {response.status_code}: {response.text}")
+                    st.error(f"n8n returned an error: {response.status_code}")
 
             except Exception as e:
-                st.error(f"Connection failed! \n\n1. Check if n8n says 'Waiting for Webhook'\n2. Check your internet\n\nDetails: {e}")
+                # THIS IS THE BLOCK THAT WAS MISSING
+                st.error(f"An error occurred: {e}")
