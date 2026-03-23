@@ -43,14 +43,18 @@ if st.button("Search Stations"):
 
         with st.spinner("Agent is analyzing gas stations and market data..."):
             try:
+                # 1. SEND DATA TO n8n
                 response = requests.post(WEBHOOK_URL, json=payload)
                 
                 if response.status_code == 200:
                     result = response.json()
+                    
+                    # n8n Cloud often wraps data in a list or a 'body' tag
                     if isinstance(result, list): result = result[0]
-
-                    # --- 1. THE ANALYTICS CHECK ---
-                    raw_data = result.get('results')
+                    
+                    # --- 2. DRILL DOWN FOR ANALYTICS ---
+                    # This looks for 'results' directly OR inside the 'body' folder
+                    raw_data = result.get('results') or result.get('body', {}).get('results')
                     
                     if raw_data:
                         df = pd.DataFrame(raw_data)
@@ -60,31 +64,38 @@ if st.button("Search Stations"):
                         c1, c2 = st.columns(2)
                         with c1:
                             st.write("**Brand Distribution**")
-                            # This creates a bar chart if Pie Chart has library issues
                             brand_counts = df['brand'].value_counts()
                             st.bar_chart(brand_counts)
                         
                         with c2:
                             st.write("**Quick Insights**")
-                            avg_p = pd.to_numeric(df['price']).mean()
+                            # Ensure price is numeric for the math to work
+                            df['price'] = pd.to_numeric(df['price'], errors='coerce')
+                            avg_p = df['price'].mean()
                             st.metric("Avg Price", f"₹{avg_p:.2f}")
                             st.metric("Stations Found", len(df))
 
-                        # --- 2. DOWNLOAD BUTTON ---
+                        # --- 3. DOWNLOAD BUTTON ---
                         csv = df.to_csv(index=False).encode('utf-8')
-                        st.download_button("📥 Download Detailed CSV", csv, "lpg_report.csv", "text/csv")
+                        st.download_button("📥 Download Analysis CSV", csv, "lpg_report.csv", "text/csv")
+                    
                     else:
-                        # DEBUG: This helps you see why the chart is missing
-                        st.warning("n8n connected, but 'results' list was missing for the charts.")
+                        st.warning("Connected to n8n, but the 'results' list was not found in the response.")
 
-                    # --- 3. AI AGENT ADVICE ---
+                    # --- 4. AI AGENT ADVICE ---
                     st.markdown("---")
                     st.markdown("### 🤖 Agent Advice")
-                    answer = result.get('output') or result.get('text')
-                    st.info(answer if answer else "No text response.")
+                    # Try to find the AI text in all common n8n locations
+                    answer = (result.get('output') or 
+                             result.get('body', {}).get('output') or 
+                             result.get('text'))
+                    
+                    st.info(answer if answer else "Analysis complete, but no text advice was returned.")
 
                 else:
-                    st.error(f"Error: {response.status_code}")
+                    st.error(f"n8n Server Error: {response.status_code}")
 
             except Exception as e:
-                st.error(f"Processing Error: {e}")
+                # --- THE MANDATORY EXCEPT BLOCK ---
+                st.error(f"⚠️ A Python Error Occurred: {e}")
+                st.info("Check if your internet is stable and n8n is 'Executing'.")
