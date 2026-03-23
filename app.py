@@ -48,54 +48,52 @@ if st.button("Search Stations"):
                 
                 if response.status_code == 200:
                     result = response.json()
-                    
-                    # n8n Cloud often wraps data in a list or a 'body' tag
                     if isinstance(result, list): result = result[0]
                     
-                    # --- 2. DRILL DOWN FOR ANALYTICS ---
-                    # This looks for 'results' directly OR inside the 'body' folder
-                    raw_data = result.get('results') or result.get('body', {}).get('results')
+                    # --- THE SUPER-SEARCHER ---
+                    # This looks for 'results' in every common n8n location
+                    raw_data = (
+                        result.get('results') or 
+                        result.get('body', {}).get('results') or 
+                        result.get('data', {}).get('results') or
+                        result.get('input', {}).get('results') # In case the AI node nests it
+                    )
                     
                     if raw_data:
                         df = pd.DataFrame(raw_data)
                         st.markdown("---")
                         st.markdown("### 📊 Market Analytics")
                         
-                        c1, c2 = st.columns(2)
-                        with c1:
+                        col1, col2 = st.columns(2)
+                        with col1:
                             st.write("**Brand Distribution**")
                             brand_counts = df['brand'].value_counts()
                             st.bar_chart(brand_counts)
                         
-                        with c2:
-                            st.write("**Quick Insights**")
-                            # Ensure price is numeric for the math to work
+                        with col2:
+                            # Use pd.to_numeric to avoid errors if price is a string
                             df['price'] = pd.to_numeric(df['price'], errors='coerce')
                             avg_p = df['price'].mean()
                             st.metric("Avg Price", f"₹{avg_p:.2f}")
-                            st.metric("Stations Found", len(df))
+                            st.metric("Options Found", len(df))
 
-                        # --- 3. DOWNLOAD BUTTON ---
+                        # Download button
                         csv = df.to_csv(index=False).encode('utf-8')
                         st.download_button("📥 Download Analysis CSV", csv, "lpg_report.csv", "text/csv")
-                    
                     else:
-                        st.warning("Connected to n8n, but the 'results' list was not found in the response.")
+                        st.warning("Connected, but the Analytics table is missing. Check AI Node settings.")
 
-                    # --- 4. AI AGENT ADVICE ---
+                    # --- AI ADVICE ---
                     st.markdown("---")
                     st.markdown("### 🤖 Agent Advice")
-                    # Try to find the AI text in all common n8n locations
                     answer = (result.get('output') or 
                              result.get('body', {}).get('output') or 
                              result.get('text'))
-                    
-                    st.info(answer if answer else "Analysis complete, but no text advice was returned.")
+                    st.info(answer if answer else "No text response found.")
 
                 else:
-                    st.error(f"n8n Server Error: {response.status_code}")
+                    st.error(f"Error: {response.status_code}")
 
             except Exception as e:
-                # --- THE MANDATORY EXCEPT BLOCK ---
-                st.error(f"⚠️ A Python Error Occurred: {e}")
-                st.info("Check if your internet is stable and n8n is 'Executing'.")
+                # MANDATORY EXCEPT BLOCK
+                st.error(f"Critical Error: {e}")
