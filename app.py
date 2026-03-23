@@ -49,17 +49,20 @@ if st.button("Search Stations"):
                 if response.status_code == 200:
                     result = response.json()
                     if isinstance(result, list): result = result[0]
-                    
-                    # --- THE SUPER-SEARCHER ---
-                    # This looks for 'results' in every common n8n location
+
+                    # --- THE MULTI-PATH SEARCH ---
+                    # We check: 
+                    # 1. Direct results
+                    # 2. Results inside body
+                    # 3. Results inside input (common when passed through AI nodes)
                     raw_data = (
                         result.get('results') or 
                         result.get('body', {}).get('results') or 
-                        result.get('data', {}).get('results') or
-                        result.get('input', {}).get('results') # In case the AI node nests it
+                        result.get('input', {}).get('results')
                     )
                     
                     if raw_data:
+                        # SUCCESS: Data found!
                         df = pd.DataFrame(raw_data)
                         st.markdown("---")
                         st.markdown("### 📊 Market Analytics")
@@ -69,19 +72,19 @@ if st.button("Search Stations"):
                             st.write("**Brand Distribution**")
                             brand_counts = df['brand'].value_counts()
                             st.bar_chart(brand_counts)
-                        
+
                         with col2:
-                            # Use pd.to_numeric to avoid errors if price is a string
+                            st.write("**Quick Insights**")
                             df['price'] = pd.to_numeric(df['price'], errors='coerce')
                             avg_p = df['price'].mean()
                             st.metric("Avg Price", f"₹{avg_p:.2f}")
-                            st.metric("Options Found", len(df))
+                            st.metric("Total Stations", len(df))
 
                         # Download button
                         csv = df.to_csv(index=False).encode('utf-8')
                         st.download_button("📥 Download Analysis CSV", csv, "lpg_report.csv", "text/csv")
                     else:
-                        st.warning("Connected, but the Analytics table is missing. Check AI Node settings.")
+                        st.warning("Connected, but the Analytics table is missing. Check AI Node 'Include Input' setting.")
 
                     # --- AI ADVICE ---
                     st.markdown("---")
@@ -89,10 +92,7 @@ if st.button("Search Stations"):
                     answer = (result.get('output') or 
                              result.get('body', {}).get('output') or 
                              result.get('text'))
-                    st.info(answer if answer else "No text response found.")
-
-                else:
-                    st.error(f"Error: {response.status_code}")
+                    st.info(answer if answer else "No advice generated.")
 
             except Exception as e:
                 # MANDATORY EXCEPT BLOCK
