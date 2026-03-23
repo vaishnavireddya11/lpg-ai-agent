@@ -43,61 +43,48 @@ if st.button("Search Stations"):
 
         with st.spinner("Agent is analyzing gas stations and market data..."):
             try:
-                # 1. SEND DATA TO n8n
                 response = requests.post(WEBHOOK_URL, json=payload)
                 
                 if response.status_code == 200:
                     result = response.json()
-                    
-                    # Handle n8n returning a list or a dict
-                    if isinstance(result, list):
-                        result = result[0]
+                    if isinstance(result, list): result = result[0]
 
-                    # --- 2. ANALYTICS & VISUALIZATION ---
-                    # This looks for the 'results' list we added in the n8n Code node
+                    # --- 1. THE ANALYTICS CHECK ---
                     raw_data = result.get('results')
                     
                     if raw_data:
                         df = pd.DataFrame(raw_data)
-                        
                         st.markdown("---")
                         st.markdown("### 📊 Market Analytics")
                         
-                        col1, col2 = st.columns(2)
-                        with col1:
+                        c1, c2 = st.columns(2)
+                        with c1:
                             st.write("**Brand Distribution**")
-                            # Simple Pie Chart using Streamlit's built-in tool
+                            # This creates a bar chart if Pie Chart has library issues
                             brand_counts = df['brand'].value_counts()
-                            st.write(brand_counts) # Shows a small table
-                            st.divider()
-                            # Optional: Use a bar chart if Pie feels too complex to code quickly
                             st.bar_chart(brand_counts)
-
-                        with col2:
+                        
+                        with c2:
                             st.write("**Quick Insights**")
-                            avg_price = pd.to_numeric(df['price']).mean()
-                            st.metric("Avg Price", f"₹{avg_price:.2f}")
-                            st.metric("Total Options", len(df))
+                            avg_p = pd.to_numeric(df['price']).mean()
+                            st.metric("Avg Price", f"₹{avg_p:.2f}")
+                            st.metric("Stations Found", len(df))
 
-                        # --- 3. DATA DOWNLOAD ---
+                        # --- 2. DOWNLOAD BUTTON ---
                         csv = df.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📥 Download Detailed Analysis (CSV)",
-                            data=csv,
-                            file_name='lpg_analysis.csv',
-                            mime='text/csv',
-                        )
+                        st.download_button("📥 Download Detailed CSV", csv, "lpg_report.csv", "text/csv")
+                    else:
+                        # DEBUG: This helps you see why the chart is missing
+                        st.warning("n8n connected, but 'results' list was missing for the charts.")
 
-                    # --- 4. AI AGENT ADVICE ---
+                    # --- 3. AI AGENT ADVICE ---
                     st.markdown("---")
                     st.markdown("### 🤖 Agent Advice")
                     answer = result.get('output') or result.get('text')
-                    st.info(answer if answer else "Analysis complete, but no text response generated.")
+                    st.info(answer if answer else "No text response.")
 
                 else:
-                    st.error(f"n8n returned an error: {response.status_code}")
+                    st.error(f"Error: {response.status_code}")
 
             except Exception as e:
-                # THIS IS THE BLOCK THAT PREVENTS THE SYNTAX ERROR
-                st.error(f"An error occurred during processing: {e}")
-                st.info("Check if your n8n workflow is 'Executing' and receiving data.")
+                st.error(f"Processing Error: {e}")
