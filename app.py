@@ -49,50 +49,43 @@ if st.button("Search Stations"):
                 if response.status_code == 200:
                     result = response.json()
                     if isinstance(result, list): result = result[0]
-
-                    # --- THE MULTI-PATH SEARCH ---
-                    # We check: 
-                    # 1. Direct results
-                    # 2. Results inside body
-                    # 3. Results inside input (common when passed through AI nodes)
-                    raw_data = (
-                        result.get('results') or 
-                        result.get('body', {}).get('results') or 
-                        result.get('input', {}).get('results')
-                    )
                     
-                    if raw_data:
-                        # SUCCESS: Data found!
-                        df = pd.DataFrame(raw_data)
-                        st.markdown("---")
-                        st.markdown("### 📊 Market Analytics")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.write("**Brand Distribution**")
-                            brand_counts = df['brand'].value_counts()
-                            st.bar_chart(brand_counts)
-
-                        with col2:
-                            st.write("**Quick Insights**")
-                            df['price'] = pd.to_numeric(df['price'], errors='coerce')
-                            avg_p = df['price'].mean()
-                            st.metric("Avg Price", f"₹{avg_p:.2f}")
-                            st.metric("Total Stations", len(df))
-
-                        # Download button
-                        csv = df.to_csv(index=False).encode('utf-8')
-                        st.download_button("📥 Download Analysis CSV", csv, "lpg_report.csv", "text/csv")
+                    # Get the AI text
+                    answer = result.get('output') or result.get('text') or ""
+                    
+                    # --- THE JSON EXTRACTOR ---
+                    # This looks for the ```json block we added to the prompt
+                    match = re.search(r'```json\n(.*?)\n```', answer, re.DOTALL)
+                    
+                    if match:
+                        try:
+                            json_data = json.loads(match.group(1))
+                            df = pd.DataFrame(json_data['results'])
+                            
+                            st.markdown("---")
+                            st.markdown("### 📊 Market Analytics")
+                            c1, c2 = st.columns(2)
+                            with c1:
+                                st.write("**Brand Distribution**")
+                                st.bar_chart(df['brand'].value_counts())
+                            with c2:
+                                df['price'] = pd.to_numeric(df['price'], errors='coerce')
+                                st.metric("Avg Price", f"₹{df['price'].mean():.2f}")
+                                st.metric("Stations Found", len(df))
+                                
+                            csv = df.to_csv(index=False).encode('utf-8')
+                            st.download_button("📥 Download Analysis CSV", csv, "lpg_report.csv", "text/csv")
+                            
+                            # Clean the 'answer' so the raw JSON doesn't show to the user
+                            answer = answer.split("```json")[0]
+                        except Exception as e:
+                            st.warning("Found data, but it was formatted incorrectly.")
                     else:
-                        st.warning("Connected, but the Analytics table is missing. Check AI Node 'Include Input' setting.")
+                        st.warning("Analytics table missing. Ensure the n8n System Message has the JSON block.")
 
-                    # --- AI ADVICE ---
                     st.markdown("---")
                     st.markdown("### 🤖 Agent Advice")
-                    answer = (result.get('output') or 
-                             result.get('body', {}).get('output') or 
-                             result.get('text'))
-                    st.info(answer if answer else "No advice generated.")
+                    st.info(answer)
 
             except Exception as e:
                 # MANDATORY EXCEPT BLOCK
