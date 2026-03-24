@@ -2,7 +2,9 @@ import streamlit as st
 import requests
 import pandas as pd  # Add this for data manipulation
 import re 
+import json
 from streamlit_js_eval import get_geolocation
+
 
 # --- UI CONFIG ---
 st.set_page_config(page_title="LPG Smart Finder", page_icon="🔥")
@@ -51,43 +53,55 @@ if st.button("Search Stations"):
                     result = response.json()
                     if isinstance(result, list): result = result[0]
                     
-                    # Get the AI text
+                    # Get the AI's text response
                     answer = result.get('output') or result.get('text') or ""
                     
-                    # --- THE JSON EXTRACTOR ---
-                    # This looks for the ```json block we added to the prompt
-                    match = re.search(r'```json\n(.*?)\n```', answer, re.DOTALL)
-                    
-                    if match:
+                    # --- 2. THE STRONG JSON EXTRACTOR ---
+                    # This finds the raw data list even if backticks are missing
+                    json_match = re.search(r'\{.*"results".*\}', answer, re.DOTALL)
+
+                    if json_match:
                         try:
-                            json_data = json.loads(match.group(1))
-                            df = pd.DataFrame(json_data['results'])
+                            clean_json = json_match.group(0)
+                            data_dict = json.loads(clean_json)
+                            df = pd.DataFrame(data_dict['results'])
                             
                             st.markdown("---")
                             st.markdown("### 📊 Market Analytics")
                             c1, c2 = st.columns(2)
                             with c1:
-                                st.write("**Brand Distribution**")
-                                st.bar_chart(df['brand'].value_counts())
+                                st.write("**Stock Levels per Station**")
+                                # Safety: Convert stock to numeric in case n8n sends it as a string
+                                df['stock'] = pd.to_numeric(df['stock'], errors='coerce').fillna(0)
+                                # Create the chart
+                                stock_df = df[['name', 'stock']].set_index('name')
+                                st.bar_chart(stock_df)
                             with c2:
                                 df['price'] = pd.to_numeric(df['price'], errors='coerce')
                                 st.metric("Avg Price", f"₹{df['price'].mean():.2f}")
-                                st.metric("Stations Found", len(df))
-                                
+                                st.metric("Total Options", len(df))
+                            
+                            # Download Button
                             csv = df.to_csv(index=False).encode('utf-8')
                             st.download_button("📥 Download Analysis CSV", csv, "lpg_report.csv", "text/csv")
                             
-                            # Clean the 'answer' so the raw JSON doesn't show to the user
-                            answer = answer.split("```json")[0]
-                        except Exception as e:
-                            st.warning("Found data, but it was formatted incorrectly.")
+                            # Clean the 'answer' so the raw JSON text is hidden
+                            clean_text = re.sub(r'\{.*"results".*\}', '', answer, flags=re.DOTALL)
+                            answer = clean_text.strip()
+                        
+                        except Exception as inner_e:
+                            st.warning(f"Data found but mapping failed: {inner_e}")
                     else:
-                        st.warning("Analytics table missing. Ensure the n8n System Message has the JSON block.")
+                        st.warning("Analytics table missing. Check n8n output for the JSON block.")
 
+                    # --- 3. SHOW AI ADVICE ---
                     st.markdown("---")
                     st.markdown("### 🤖 Agent Advice")
                     st.info(answer)
 
+                else:
+                    st.error(f"n8n Error: {response.status_code}")
+
             except Exception as e:
-                # MANDATORY EXCEPT BLOCK
-                st.error(f"Critical Error: {e}")
+                # THIS IS THE BLOCK THAT FIXES YOUR SYNTAX ERROR
+                st.error(f"Connection Error: {e}")
